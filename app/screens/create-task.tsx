@@ -1,9 +1,10 @@
+import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 
-export default function Mentor() {
+export default function CreateTaskScreen() {
   return (
     <View style={styles.container}>
-      <Text style={styles.text}>🧠 Ментор загружается...</Text>
+      <Text style={styles.text}>Создание новой задачи</Text>
     </View>
   );
 }
@@ -11,12 +12,10 @@ export default function Mentor() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#111',
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'center',
   },
   text: {
-    color: '#fff',
-    fontSize: 20,
+    fontSize: 16,
   },
 });
