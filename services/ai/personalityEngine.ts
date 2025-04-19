@@ -298,7 +298,6 @@ class PersonalityEngine {
       const recommendations: Array<{ id: string; score: number }> = [];
       
       // Simple scoring algorithm based on key traits
-      // In a real app, this would be more sophisticated
       for (const [id, persona] of this.personas.entries()) {
         let score = 50; // Base score
         

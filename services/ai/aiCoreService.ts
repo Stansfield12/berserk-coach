@@ -6,9 +6,12 @@ import { memoryEngine } from './memoryEngine';
 import { actionInterpreter } from './actionInterpreter';
 import { personalityEngine } from './personalityEngine';
 import { userProfileEngine } from './userProfileEngine';
+import Constants from 'expo-constants';
 
-// API Keys should be stored securely in environment variables or secure storage
-const API_KEY = process.env.OPENAI_API_KEY || '';
+// API Keys would be stored securely in environment variables in production
+// For development, we'll use a placeholder
+const API_KEY = Constants.expoConfig?.extra?.OPENAI_KEY;
+// Replace with actual key or env variable
 
 class AICoreService {
   private static instance: AICoreService;
@@ -19,7 +22,7 @@ class AICoreService {
 
   private constructor() {
     // Initialize with default persona
-    this.loadPersona('default');
+    this.loadPersona('commander');
     this.initConversation();
   }
 
@@ -50,6 +53,18 @@ class AICoreService {
       // Build system instructions based on current persona
       this.buildSystemInstructions();
       
+      // If no messages exist yet, add a welcome message
+      if (this.contextWindow.length === 0 && this.currentPersona) {
+        const welcomeMessage: Message = {
+          id: `msg_${Date.now()}`,
+          role: 'assistant',
+          content: this.currentPersona.welcomeMessage,
+          timestamp: new Date().toISOString()
+        };
+        
+        this.contextWindow.push(welcomeMessage);
+        await memoryEngine.saveMessage(this.conversationId, welcomeMessage);
+      }
     } catch (error) {
       console.error('Failed to initialize conversation:', error);
       throw new Error('Conversation initialization failed');
@@ -146,6 +161,13 @@ class AICoreService {
   }
 
   /**
+   * Gets the current persona
+   */
+  public getCurrentPersona(): PersonaProfile | null {
+    return this.currentPersona;
+  }
+
+  /**
    * Creates or updates a custom persona
    * @param persona Persona profile to save
    */
@@ -162,6 +184,17 @@ class AICoreService {
       console.error('Failed to save persona:', error);
       throw new Error('Failed to save persona');
     }
+  }
+
+  /**
+   * Gets message history for the current conversation
+   */
+  public async getMessageHistory(): Promise<Message[]> {
+    if (!this.conversationId) {
+      await this.initConversation();
+    }
+    
+    return this.contextWindow;
   }
 
   /**
@@ -266,7 +299,7 @@ class AICoreService {
       const response = await axios.post(
         'https://api.openai.com/v1/chat/completions',
         {
-          model: 'gpt-4-turbo',
+          model: 'gpt-4o',
           messages: messages,
           temperature: this.currentPersona?.temperature || 0.7,
           max_tokens: 1000

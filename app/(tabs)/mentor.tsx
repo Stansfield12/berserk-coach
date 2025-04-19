@@ -21,7 +21,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 
 // Заглушки для данных (в реальном приложении будут из Redux или Context)
-import { useMentorData } from '@/hooks/useMentorData';
+import { useMentorData, MessageType } from '@/hooks/useMentorData';
 import { useColorScheme } from '@/hooks/useColorScheme';
 
 // Константы для дизайн-системы
@@ -54,30 +54,8 @@ const COLORS = {
   },
 };
 
-// Типы сообщений
-enum MessageType {
-  User = 'user',
-  Mentor = 'mentor',
-  System = 'system',
-}
-
-interface Message {
-  id: string;
-  text: string;
-  type: MessageType;
-  timestamp: number;
-  attachedData?: any;
-}
-
-interface Persona {
-  id: string;
-  name: string;
-  description: string;
-  icon: string;
-}
-
 // Компонент пузыря сообщения
-const MessageBubble = ({ message }: { message: Message }) => {
+const MessageBubble = ({ message }: { message: any }) => {
   const colorScheme = useColorScheme();
   const colors = COLORS[colorScheme || 'dark'];
   
@@ -190,7 +168,7 @@ const PersonaSelector = ({
   onSelect,
   onClose
 }: { 
-  personas: Persona[], 
+  personas: any[], 
   selectedPersonaId: string, 
   onSelect: (personaId: string) => void,
   onClose: () => void
@@ -251,7 +229,6 @@ const PersonaSelector = ({
   );
 };
 
-// Главный компонент MentorScreen
 // Стили для компонентов
 const styles = StyleSheet.create({
   container: {
@@ -280,6 +257,7 @@ const styles = StyleSheet.create({
   },
   personaAvatarText: {
     fontSize: 20,
+    color: '#FFFFFF',
   },
   personaTitle: {
     fontSize: 16,
@@ -348,7 +326,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(0, 0, 0, 0.1)',
   },
   input: {
     flex: 1,
@@ -472,6 +449,7 @@ const styles = StyleSheet.create({
   },
 });
 
+// Главный компонент MentorScreen
 export default function MentorScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -487,7 +465,7 @@ export default function MentorScreen() {
   const [isRecording, setIsRecording] = useState(false);
   const [showPersonaSelector, setShowPersonaSelector] = useState(false);
   
-  // Получение данных через хуки (в реальном приложении из Redux)
+  // Получение данных из хука
   const { 
     messages, 
     personas,
@@ -534,13 +512,6 @@ export default function MentorScreen() {
   const handleSelectPersona = (personaId: string) => {
     setPersona(personaId);
     setShowPersonaSelector(false);
-    
-    // Добавляем системное сообщение о смене персоны
-    const selectedPersona = personas.find(p => p.id === personaId);
-    if (selectedPersona) {
-      // В реальном приложении это сообщение добавлялось бы через Redux action
-      // но для упрощения делаем это здесь
-    }
   };
   
   const handleClearConversation = () => {
@@ -560,7 +531,12 @@ export default function MentorScreen() {
   };
   
   // Находим данные о выбранной персоне
-  const selectedPersona = personas.find(p => p.id === selectedPersonaId) || personas[0];
+  // Проверка на существование personas перед поиском
+  const selectedPersona = personas && personas.length > 0 
+    ? personas.find(p => p.id === selectedPersonaId) || personas[0]
+    : null;
+  
+  const defaultPersonaIcon = '👨‍💼'; // Дефолтная иконка, если персона не найдена
   
   return (
     <View style={[
@@ -577,11 +553,13 @@ export default function MentorScreen() {
       ]}>
         <View style={styles.personaInfo}>
           <View style={styles.personaAvatar}>
-            <Text style={styles.personaAvatarText}>{selectedPersona.icon}</Text>
+            <Text style={styles.personaAvatarText}>
+              {selectedPersona ? selectedPersona.icon : defaultPersonaIcon}
+            </Text>
           </View>
           <View>
             <Text style={[styles.personaTitle, { color: colors.text }]}>
-              {selectedPersona.name}
+              {selectedPersona ? selectedPersona.name : 'Ментор'}
             </Text>
             <Text style={[styles.personaSubtitle, { color: colors.secondaryText }]}>
               AI-Ментор
@@ -611,10 +589,12 @@ export default function MentorScreen() {
         ListEmptyComponent={() => (
           <View style={styles.emptyChat}>
             <View style={styles.welcomePersonaContainer}>
-              <Text style={styles.welcomePersonaEmoji}>{selectedPersona.icon}</Text>
+              <Text style={styles.welcomePersonaEmoji}>
+                {selectedPersona ? selectedPersona.icon : defaultPersonaIcon}
+              </Text>
             </View>
             <Text style={[styles.welcomeTitle, { color: colors.text }]}>
-              {`Начните общение с ${selectedPersona.name}`}
+              {`Начните общение с ${selectedPersona ? selectedPersona.name : 'ментором'}`}
             </Text>
             <Text style={[styles.welcomeText, { color: colors.secondaryText }]}>
               Задайте вопрос, обсудите свои цели или получите совет
@@ -637,7 +617,7 @@ export default function MentorScreen() {
       )}
       
       {/* Селектор персоны (показывается по условию) */}
-      {showPersonaSelector && (
+      {showPersonaSelector && personas && personas.length > 0 && (
         <PersonaSelector
           personas={personas}
           selectedPersonaId={selectedPersonaId}
@@ -652,7 +632,10 @@ export default function MentorScreen() {
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
         style={[
           styles.inputContainer,
-          { backgroundColor: colors.toolbarBackground }
+          { 
+            backgroundColor: colors.toolbarBackground,
+            borderTopColor: colors.separator
+          }
         ]}
       >
         <TextInput

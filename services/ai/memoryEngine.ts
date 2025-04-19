@@ -9,8 +9,7 @@ class MemoryEngine {
   private static instance: MemoryEngine;
   private conversationKeyPrefix = 'conv_';
   private memoryKeyPrefix = 'memory_';
-  private embeddingCache: Record<string, number[]> = {};
-
+  
   private constructor() {
     // Initialize memory engine
     this.init();
@@ -25,15 +24,11 @@ class MemoryEngine {
 
   /**
    * Initialize the memory engine
-   * Loads necessary data from storage
    */
   private async init(): Promise<void> {
     try {
-      // Load embedding cache from storage if available
-      const cachedEmbeddings = await AsyncStorage.getItem('embedding_cache');
-      if (cachedEmbeddings) {
-        this.embeddingCache = JSON.parse(cachedEmbeddings);
-      }
+      // Any initialization logic here
+      console.log('Memory Engine initialized');
     } catch (error) {
       console.error('Failed to initialize memory engine:', error);
     }
@@ -132,16 +127,13 @@ class MemoryEngine {
    */
   private async indexMessageForSearch(conversationId: string, message: Message): Promise<void> {
     try {
-      // In a real implementation, we would compute embeddings here
-      // For this prototype, we'll use a simplified approach
-      
+      // For this implementation, we'll use a simplified approach with keywords
       const memoryItem = {
         id: message.id,
         conversationId,
         content: message.content,
         timestamp: message.timestamp,
         role: message.role,
-        // In a real implementation, we would store embeddings
         keywords: this.extractKeywords(message.content)
       };
       
@@ -198,12 +190,7 @@ class MemoryEngine {
    */
   public async retrieveRelevantContext(query: string, limit: number = 3): Promise<string> {
     try {
-      // In a production app, we would:
-      // 1. Generate embeddings for the query
-      // 2. Find memories with similar embeddings
-      // 3. Return the most relevant ones
-      
-      // For this prototype, we'll use keyword matching
+      // Simple keyword matching for relevance
       const queryKeywords = this.extractKeywords(query);
       const allMemoryKeys = await this.getAllMemoryKeys();
       const matchedMemories: Array<{ content: string; score: number }> = [];
@@ -248,11 +235,10 @@ class MemoryEngine {
    * @returns Array of keywords
    */
   private extractKeywords(text: string): string[] {
-    // A very simplified keyword extraction
-    // In a real app, use NLP techniques or API
+    // A simplified keyword extraction
     return text
       .toLowerCase()
-      .replace(/[^\w\s]/gi, '') // Remove punctuation
+      .replace(/[^\wа-яё\s]/gi, '') // Remove punctuation (supports Cyrillic)
       .split(/\s+/) // Split by whitespace
       .filter(word => word.length > 3) // Keep only words longer than 3 chars
       .filter(word => !this.isStopWord(word)); // Remove stop words
@@ -264,7 +250,12 @@ class MemoryEngine {
    * @returns Whether it's a stop word
    */
   private isStopWord(word: string): boolean {
-    const stopWords = ['and', 'the', 'that', 'this', 'with', 'for', 'from', 'что', 'как', 'где', 'когда', 'который', 'это'];
+    const stopWords = [
+      // English
+      'and', 'the', 'that', 'this', 'with', 'for', 'from', 'have', 'will', 
+      // Russian
+      'это', 'как', 'что', 'где', 'когда', 'который', 'для', 'или', 'есть', 'быть'
+    ];
     return stopWords.includes(word);
   }
 
@@ -301,7 +292,7 @@ class MemoryEngine {
   }
 
   /**
-   * Saves a journal entry and indexes it for memory retrieval
+   * Saves a journal entry
    * @param journalEntry Journal entry content
    * @param tags Associated tags
    * @returns ID of the saved entry
@@ -341,6 +332,39 @@ class MemoryEngine {
   }
 
   /**
+   * Retrieves all journal entries
+   * @returns Array of journal entries
+   */
+  public async getAllJournalEntries(): Promise<any[]> {
+    try {
+      const indexKey = 'journal_entries';
+      const journalIndex = await AsyncStorage.getItem(indexKey);
+      
+      if (!journalIndex) return [];
+      
+      const journalIds: string[] = JSON.parse(journalIndex);
+      const entries: any[] = [];
+      
+      for (const id of journalIds) {
+        const entryData = await AsyncStorage.getItem(`journal_${id}`);
+        if (entryData) {
+          entries.push(JSON.parse(entryData));
+        }
+      }
+      
+      // Sort by timestamp (newest first)
+      entries.sort((a, b) => 
+        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      );
+      
+      return entries;
+    } catch (error) {
+      console.error('Failed to retrieve journal entries:', error);
+      return [];
+    }
+  }
+
+  /**
    * Retrieves relevant journal entries based on the query
    * @param query User's query
    * @param limit Maximum number of entries to retrieve
@@ -349,27 +373,18 @@ class MemoryEngine {
   public async retrieveRelevantJournalEntries(query: string, limit: number = 3): Promise<any[]> {
     try {
       const queryKeywords = this.extractKeywords(query);
-      const indexKey = 'journal_entries';
-      
-      const journalIndex = await AsyncStorage.getItem(indexKey);
-      if (!journalIndex) return [];
-      
-      const journalIds: string[] = JSON.parse(journalIndex);
+      const entries = await this.getAllJournalEntries();
       const matchedEntries: Array<{ entry: any; score: number }> = [];
       
-      for (const id of journalIds) {
-        const entryData = await AsyncStorage.getItem(`journal_${id}`);
-        if (entryData) {
-          const entry = JSON.parse(entryData);
-          const entryKeywords = entry.keywords || this.extractKeywords(entry.content);
-          const matchScore = this.calculateMatchScore(queryKeywords, entryKeywords);
-          
-          if (matchScore > 0 || query.length === 0) { // Include all if no query
-            matchedEntries.push({
-              entry,
-              score: matchScore
-            });
-          }
+      for (const entry of entries) {
+        const entryKeywords = entry.keywords || this.extractKeywords(entry.content);
+        const matchScore = this.calculateMatchScore(queryKeywords, entryKeywords);
+        
+        if (matchScore > 0 || query.length === 0) { // Include all if no query
+          matchedEntries.push({
+            entry,
+            score: matchScore
+          });
         }
       }
       
@@ -382,7 +397,7 @@ class MemoryEngine {
       // Return the top matches
       return matchedEntries.slice(0, limit).map(item => item.entry);
     } catch (error) {
-      console.error('Failed to retrieve journal entries:', error);
+      console.error('Failed to retrieve relevant journal entries:', error);
       return [];
     }
   }

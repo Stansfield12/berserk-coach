@@ -184,7 +184,25 @@ export default function TabLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="journal"
+        options={{
+          title: 'Дневник',
+          tabBarIcon: ({ color }) => (
+            <Ionicons name="book" size={24} color={color} />
+          ),
+          tabBarButton: (props) => (
+            <CustomTabBarButton
+              {...props}
+              icon="book"
+              label="Дневник"
+              active={props.accessibilityState?.selected || false}
+            />
+          ),
+        }}
+      />
     </Tabs>
+
   );
 }
 

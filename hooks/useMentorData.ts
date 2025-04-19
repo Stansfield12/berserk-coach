@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react';
+import { aiCoreService } from '@/services/ai/aiCoreService';
+import { personalityEngine } from '@/services/ai/personalityEngine';
+import { Message, PersonaProfile } from '@/types/ai';
 
-// Типы данных для ментора
 export enum MessageType {
   User = 'user',
   Mentor = 'mentor',
   System = 'system',
 }
 
-export interface Message {
+export interface MentorMessage {
   id: string;
   text: string;
   type: MessageType;
@@ -15,192 +17,198 @@ export interface Message {
   attachedData?: any;
 }
 
-export interface Persona {
-  id: string;
-  name: string;
-  description: string;
-  icon: string;
-}
-
-// Моковые данные для разработки
-const mockPersonas: Persona[] = [
-  {
-    id: 'commander',
-    name: 'Командир',
-    description: 'Жесткий, структурированный ментор с фокусом на дисциплину и результаты',
-    icon: '👊'
-  },
-  {
-    id: 'strategist',
-    name: 'Стратег',
-    description: 'Аналитический подход с долгосрочным видением и системным мышлением',
-    icon: '🧠'
-  },
-  {
-    id: 'catalyst',
-    name: 'Катализатор',
-    description: 'Энергичный, мотивирующий подход для преодоления барьеров',
-    icon: '⚡'
-  },
-  {
-    id: 'architect',
-    name: 'Архитектор',
-    description: 'Методичный, детализированный подход для сложных проектов',
-    icon: '🏗️'
-  }
-];
-
-const mockMessages: Message[] = [
-  {
-    id: '1',
-    text: 'Привет! Я твой AI-ментор. Расскажи, над какими целями ты сейчас работаешь?',
-    type: MessageType.Mentor,
-    timestamp: Date.now() - 86400000
-  },
-  {
-    id: '2',
-    text: 'Я работаю над MVP для своего приложения и хочу улучшить дисциплину',
-    type: MessageType.User,
-    timestamp: Date.now() - 86000000
-  },
-  {
-    id: '3',
-    text: 'Хорошо. Для MVP важно сосредоточиться на ключевых функциях и четко структурировать процесс разработки. Что касается дисциплины, предлагаю начать с небольших, но ежедневных обязательств. Какие конкретные шаги ты уже предпринял?',
-    type: MessageType.Mentor,
-    timestamp: Date.now() - 85800000
-  }
-];
-
+/**
+ * Hook for interacting with the AI mentor
+ */
 export function useMentorData() {
-  const [messages, setMessages] = useState<Message[]>(mockMessages);
-  const [personas, setPersonas] = useState<Persona[]>(mockPersonas);
+  const [messages, setMessages] = useState<MentorMessage[]>([]);
+  const [personas, setPersonas] = useState<PersonaProfile[]>([]);
   const [selectedPersonaId, setSelectedPersonaId] = useState<string>('commander');
-  const [loading, setLoading] = useState(false);
-  
-  // Симуляция загрузки данных при первом рендере
+  const [loading, setLoading] = useState<boolean>(true);
+
+  // Initialize data on component mount
   useEffect(() => {
-    setLoading(true);
-    
-    // Имитация задержки сети
-    const timer = setTimeout(() => {
-      setMessages(mockMessages);
-      setPersonas(mockPersonas);
-      setLoading(false);
-    }, 1000);
-    
-    return () => clearTimeout(timer);
-  }, []);
-  
-  // Функция для отправки сообщения ментору
-  const sendMessage = (text: string): void => {
-    // Добавляем сообщение пользователя
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      text,
-      type: MessageType.User,
-      timestamp: Date.now()
+    const initMentor = async () => {
+      try {
+        setLoading(true);
+        
+        // Load all personas
+        const availablePersonas = await personalityEngine.getAllPersonas();
+        setPersonas(availablePersonas);
+        
+        // Load current persona
+        const currentPersona = await aiCoreService.getCurrentPersona();
+        if (currentPersona) {
+          setSelectedPersonaId(currentPersona.id);
+        }
+        
+        // Load message history
+        const history = await aiCoreService.getMessageHistory();
+        const formattedMessages = transformMessages(history);
+        setMessages(formattedMessages);
+      } catch (error) {
+        console.error('Failed to initialize mentor data:', error);
+      } finally {
+        setLoading(false);
+      }
     };
     
-    setMessages(prevMessages => [...prevMessages, userMessage]);
-    
-    // Имитируем ответ ментора
-    setLoading(true);
-    
-    setTimeout(() => {
-      const mentorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        text: generateMentorResponse(text, selectedPersonaId),
+    initMentor();
+  }, []);
+
+  /**
+   * Transform message format from AI service to UI format
+   */
+  const transformMessages = (messages: Message[]): MentorMessage[] => {
+    return messages.map(msg => ({
+      id: msg.id,
+      text: msg.content,
+      type: msg.role === 'user' ? MessageType.User : 
+            msg.role === 'system' ? MessageType.System : MessageType.Mentor,
+      timestamp: new Date(msg.timestamp).getTime(),
+    }));
+  };
+
+  /**
+   * Send a message to the AI mentor
+   */
+  const sendMessage = async (text: string): Promise<void> => {
+    try {
+      setLoading(true);
+      
+      // Add user message to UI immediately
+      const userMessage: MentorMessage = {
+        id: `msg_${Date.now()}`,
+        text,
+        type: MessageType.User,
+        timestamp: Date.now()
+      };
+      
+      setMessages(prevMessages => [...prevMessages, userMessage]);
+      
+      // Send to AI service and get response
+      const response = await aiCoreService.sendMessage(text);
+      
+      // Add AI response to UI
+      const aiMessage: MentorMessage = {
+        id: `msg_${Date.now() + 1}`,
+        text: response.response,
         type: MessageType.Mentor,
         timestamp: Date.now() + 1
       };
       
-      setMessages(prevMessages => [...prevMessages, mentorMessage]);
+      setMessages(prevMessages => [...prevMessages, aiMessage]);
+      
+      // Process any actions returned
+      if (response.actions && response.actions.length > 0) {
+        // In a full implementation, we would dispatch these actions to Redux
+        // For now, we'll just log them
+        console.log('Actions to perform:', response.actions);
+      }
+    } catch (error) {
+      console.error('Error sending message:', error);
+      
+      // Add error message
+      const errorMessage: MentorMessage = {
+        id: `msg_${Date.now() + 1}`,
+        text: 'Произошла ошибка при обработке сообщения. Пожалуйста, попробуйте еще раз.',
+        type: MessageType.System,
+        timestamp: Date.now() + 1
+      };
+      
+      setMessages(prevMessages => [...prevMessages, errorMessage]);
+    } finally {
       setLoading(false);
-    }, 1500);
+    }
   };
-  
-  // Функция для выбора персоны ментора
-  const setPersona = (personaId: string): void => {
-    setSelectedPersonaId(personaId);
-    
-    const selectedPersona = personas.find(p => p.id === personaId);
-    if (selectedPersona) {
-      const systemMessage: Message = {
-        id: Date.now().toString(),
-        text: `Персона ментора изменена на "${selectedPersona.name}"`,
+
+  /**
+   * Change the mentor's persona
+   */
+  const setPersona = async (personaId: string): Promise<void> => {
+    try {
+      setLoading(true);
+      
+      // Find the persona
+      const persona = personas.find(p => p.id === personaId);
+      if (!persona) {
+        throw new Error(`Persona ${personaId} not found`);
+      }
+      
+      // Update selected persona state
+      setSelectedPersonaId(personaId);
+      
+      // Update in AI service
+      await aiCoreService.loadPersona(personaId);
+      
+      // Add system message about persona change
+      const systemMessage: MentorMessage = {
+        id: `msg_${Date.now()}`,
+        text: `Персона ментора изменена на "${persona.name}"`,
         type: MessageType.System,
         timestamp: Date.now()
       };
       
       setMessages(prevMessages => [...prevMessages, systemMessage]);
+      
+      // Add welcome message from new persona
+      const welcomeMessage: MentorMessage = {
+        id: `msg_${Date.now() + 1}`,
+        text: persona.welcomeMessage,
+        type: MessageType.Mentor,
+        timestamp: Date.now() + 1
+      };
+      
+      setMessages(prevMessages => [...prevMessages, welcomeMessage]);
+    } catch (error) {
+      console.error('Error changing persona:', error);
+    } finally {
+      setLoading(false);
     }
   };
-  
-  // Функция для начала голосового ввода
-  const startVoiceInput = (): void => {
-    // В реальном приложении здесь был бы код для записи голоса
-    console.log('Начало записи голоса');
+
+  /**
+   * Clear the conversation history
+   */
+  const clearConversation = async (): Promise<void> => {
+    try {
+      setLoading(true);
+      
+      // Clear conversation in AI service
+      await aiCoreService.clearConversation();
+      
+      // Get the initial welcome message
+      const history = await aiCoreService.getMessageHistory();
+      const formattedMessages = transformMessages(history);
+      
+      // Update messages state
+      setMessages(formattedMessages);
+    } catch (error) {
+      console.error('Error clearing conversation:', error);
+    } finally {
+      setLoading(false);
+    }
   };
-  
-  // Функция для завершения голосового ввода
+
+  /**
+   * Functions for voice input (placeholder implementations)
+   */
+  const startVoiceInput = (): void => {
+    // In a real implementation, this would start recording and transcribing voice
+    console.log('Voice recording started');
+  };
+
   const stopVoiceInput = (): void => {
-    // В реальном приложении здесь был бы код для обработки записи
-    console.log('Завершение записи голоса');
+    // In a real implementation, this would stop recording, finalize transcription,
+    // and send the transcribed message to the mentor
+    console.log('Voice recording stopped');
     
-    // Имитация распознавания речи
+    // Simulate voice input by sending a placeholder message
     setTimeout(() => {
       sendMessage('Это сообщение от голосового ввода');
     }, 1000);
   };
-  
-  // Функция для очистки диалога
-  const clearConversation = (): void => {
-    // Оставляем только приветственное сообщение
-    const welcomeMessage: Message = {
-      id: Date.now().toString(),
-      text: 'Диалог очищен. Чем я могу помочь?',
-      type: MessageType.Mentor,
-      timestamp: Date.now()
-    };
-    
-    setMessages([welcomeMessage]);
-  };
-  
-  // Вспомогательная функция для генерации ответа ментора
-  const generateMentorResponse = (userText: string, personaId: string): string => {
-    // В реальном приложении здесь был бы запрос к AI API
-    
-    // Простая имитация разных типов ответов в зависимости от персоны
-    const responses: Record<string, string[]> = {
-      'commander': [
-        'Конкретизируй цель. Какие точные показатели успеха?',
-        'Дисциплина — это действие, а не состояние. Какой первый шаг ты сделаешь сегодня?',
-        'Четкий план освобождает ресурсы для действий. Разбей задачу на конкретные этапы.'
-      ],
-      'strategist': [
-        'Давай рассмотрим это системно. Какие факторы влияют на ситуацию?',
-        'Эта задача вписывается в твои долгосрочные цели? Как именно?',
-        'Интересно проанализировать, как это решение повлияет на другие аспекты проекта.'
-      ],
-      'catalyst': [
-        'Что именно блокирует твой прогресс сейчас? Давай это преодолеем!',
-        'Отличный момент для рывка! Какие ресурсы тебе нужны для ускорения?',
-        'Энергия следует за фокусом. На чем нужно сконцентрироваться сегодня?'
-      ],
-      'architect': [
-        'Давай детализируем структуру. Какие компоненты требуют проработки?',
-        'Качество архитектуры определяет скорость разработки. Где могут быть узкие места?',
-        'Предлагаю составить детальную схему этапов с конкретными критериями завершенности.'
-      ]
-    };
-    
-    // Выбираем случайный ответ из массива для выбранной персоны
-    const personaResponses = responses[personaId] || responses['commander'];
-    const randomIndex = Math.floor(Math.random() * personaResponses.length);
-    
-    return personaResponses[randomIndex];
-  };
-  
+
   return {
     messages,
     personas,

@@ -2,8 +2,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { memoryEngine } from './memoryEngine';
 
-// API Keys should be stored securely
-const API_KEY = process.env.OPENAI_API_KEY || '';
+// API Keys would be stored securely in environment variables in production
+// For development, we'll use a placeholder
+const API_KEY = 'your-api-key-here'; // Replace with actual key or env variable
 
 // User profile interface
 interface UserProfile {
@@ -451,7 +452,7 @@ class UserProfileEngine {
       const response = await axios.post(
         'https://api.openai.com/v1/chat/completions',
         {
-          model: 'gpt-4-turbo',
+          model: 'gpt-4o',
           messages: [
             {
               role: 'system',

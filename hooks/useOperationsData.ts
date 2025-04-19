@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { aiCoreService } from '@/services/ai/aiCoreService';
 
 // Типы данных для операционного центра
 export interface Task {
@@ -22,130 +24,132 @@ export interface Habit {
   category?: string;
 }
 
-// Моковые данные для разработки
-const mockTasks: Task[] = [
-  {
-    id: '1',
-    title: 'Завершить дизайн UI для ключевых экранов',
-    description: 'Подготовить макеты в Figma для главных экранов приложения',
-    completed: false,
-    priority: 'high',
-    dueDate: '2025-04-20',
-    category: 'Работа'
-  },
-  {
-    id: '2',
-    title: 'Написать документацию API',
-    description: 'Описать все эндпоинты для взаимодействия с бэкендом',
-    completed: false,
-    priority: 'medium',
-    dueDate: '2025-04-25',
-    category: 'Работа'
-  },
-  {
-    id: '3',
-    title: 'Тренировка силы',
-    description: 'Выполнить комплекс упражнений на силу',
-    completed: true,
-    priority: 'medium',
-    category: 'Здоровье'
-  },
-  {
-    id: '4',
-    title: 'Прочитать главу книги по архитектуре ПО',
-    completed: false,
-    priority: 'low',
-    category: 'Саморазвитие'
-  }
-];
-
-const mockHabits: Habit[] = [
-  {
-    id: '1',
-    title: 'Утренняя тренировка',
-    description: 'Зарядка и силовые упражнения',
-    frequency: 'daily',
-    completedDates: [
-      '2025-04-15',
-      '2025-04-16',
-      '2025-04-17'
-    ],
-    streak: 3,
-    category: 'Здоровье'
-  },
-  {
-    id: '2',
-    title: 'Чтение 30 минут',
-    description: 'Профессиональная литература',
-    frequency: 'daily',
-    completedDates: [
-      '2025-04-15',
-      '2025-04-16'
-    ],
-    streak: 2,
-    category: 'Саморазвитие'
-  },
-  {
-    id: '3',
-    title: 'Планирование недели',
-    description: 'Стратегическое планирование на следующую неделю',
-    frequency: 'weekly',
-    completedDates: [
-      '2025-04-14'
-    ],
-    streak: 1,
-    category: 'Продуктивность'
-  }
-];
+// Ключи для хранения данных
+const TASKS_STORAGE_KEY = 'berserk_tasks';
+const HABITS_STORAGE_KEY = 'berserk_habits';
+const CATEGORIES_STORAGE_KEY = 'berserk_categories';
 
 export function useOperationsData() {
-  const [tasks, setTasks] = useState<Task[]>(mockTasks);
-  const [habits, setHabits] = useState<Habit[]>(mockHabits);
-  const [loading, setLoading] = useState(false);
-  
-  // Список категорий из задач и привычек
-  const categories = Array.from(new Set([
-    ...tasks.map(task => task.category),
-    ...habits.map(habit => habit.category)
-  ].filter(Boolean) as string[]));
-  
-  // Симуляция загрузки данных при первом рендере
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [habits, setHabits] = useState<Habit[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+
+  // Загрузка данных при первом рендере
   useEffect(() => {
-    setLoading(true);
-    
-    // Имитация задержки сети
-    const timer = setTimeout(() => {
-      setTasks(mockTasks);
-      setHabits(mockHabits);
-      setLoading(false);
-    }, 1000);
-    
-    return () => clearTimeout(timer);
+    loadData();
   }, []);
-  
-  // Функция для отметки задачи как выполненной/невыполненной
-  const toggleTask = (taskId: string): void => {
-    setTasks(prevTasks => 
-      prevTasks.map(task => 
-        task.id === taskId ? { ...task, completed: !task.completed } : task
-      )
+
+  // Загрузка всех данных
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      // Загрузка задач
+      const tasksData = await AsyncStorage.getItem(TASKS_STORAGE_KEY);
+      if (tasksData) {
+        setTasks(JSON.parse(tasksData));
+      }
+
+      // Загрузка привычек
+      const habitsData = await AsyncStorage.getItem(HABITS_STORAGE_KEY);
+      if (habitsData) {
+        setHabits(JSON.parse(habitsData));
+      }
+
+      // Загрузка категорий
+      const categoriesData = await AsyncStorage.getItem(CATEGORIES_STORAGE_KEY);
+      if (categoriesData) {
+        setCategories(JSON.parse(categoriesData));
+      } else {
+        // Установка начальных категорий, если они не найдены
+        const defaultCategories = ['Работа', 'Здоровье', 'Саморазвитие', 'Личное'];
+        await AsyncStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(defaultCategories));
+        setCategories(defaultCategories);
+      }
+    } catch (error) {
+      console.error('Ошибка загрузки данных:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Сохранение задач в AsyncStorage
+  const saveTasks = async (updatedTasks: Task[]) => {
+    try {
+      await AsyncStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(updatedTasks));
+      setTasks(updatedTasks);
+
+      // Обновление категорий
+      updateCategories([...updatedTasks, ...habits]);
+    } catch (error) {
+      console.error('Ошибка сохранения задач:', error);
+    }
+  };
+
+  // Сохранение привычек в AsyncStorage
+  const saveHabits = async (updatedHabits: Habit[]) => {
+    try {
+      await AsyncStorage.setItem(HABITS_STORAGE_KEY, JSON.stringify(updatedHabits));
+      setHabits(updatedHabits);
+
+      // Обновление категорий
+      updateCategories([...tasks, ...updatedHabits]);
+    } catch (error) {
+      console.error('Ошибка сохранения привычек:', error);
+    }
+  };
+
+  // Обновление списка категорий на основе текущих задач и привычек
+  const updateCategories = async (items: (Task | Habit)[]) => {
+    try {
+      const uniqueCategories = Array.from(
+        new Set(
+          items
+            .map(item => item.category)
+            .filter((category): category is string => !!category)
+        )
+      );
+
+      if (uniqueCategories.length > 0) {
+        await AsyncStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(uniqueCategories));
+        setCategories(uniqueCategories);
+      }
+    } catch (error) {
+      console.error('Ошибка обновления категорий:', error);
+    }
+  };
+
+  // Функция обновления данных (pull-to-refresh)
+  const refreshData = async (): Promise<void> => {
+    await loadData();
+  };
+
+  // CRUD операции для задач
+
+  // Отметка задачи как выполненной/невыполненной
+  const toggleTask = async (taskId: string): Promise<void> => {
+    const updatedTasks = tasks.map(task =>
+      task.id === taskId ? { ...task, completed: !task.completed } : task
     );
+    await saveTasks(updatedTasks);
   };
-  
-  // Функция для удаления задачи
-  const deleteTask = (taskId: string): void => {
-    setTasks(prevTasks => prevTasks.filter(task => task.id !== taskId));
+
+  // Удаление задачи
+  const deleteTask = async (taskId: string): Promise<void> => {
+    const updatedTasks = tasks.filter(task => task.id !== taskId);
+    await saveTasks(updatedTasks);
   };
-  
-  // Функция для редактирования задачи
-  const editTask = (task: Task): void => {
-    setTasks(prevTasks => 
-      prevTasks.map(t => t.id === task.id ? task : t)
+
+  // Редактирование задачи
+  const editTask = async (updatedTask: Task): Promise<void> => {
+    const updatedTasks = tasks.map(task =>
+      task.id === updatedTask.id ? updatedTask : task
     );
+    await saveTasks(updatedTasks);
   };
-  
-  // Функция для добавления задачи
-  const addTask = (taskData: Partial<Task>): void => {
+
+  // Добавление задачи
+  const addTask = async (taskData: Partial<Task>): Promise<void> => {
     const newTask: Task = {
       id: Date.now().toString(),
       title: taskData.title || '',
@@ -154,97 +158,148 @@ export function useOperationsData() {
       priority: taskData.priority || 'medium',
       dueDate: taskData.dueDate,
       category: taskData.category,
-      tags: taskData.tags
+      tags: taskData.tags || []
     };
-    
-    setTasks(prevTasks => [newTask, ...prevTasks]);
+
+    const updatedTasks = [newTask, ...tasks];
+    await saveTasks(updatedTasks);
   };
-  
-  // Функция для отметки привычки как выполненной сегодня
-  const completeHabit = (habitId: string): void => {
+
+  // CRUD операции для привычек
+
+  // Отметка привычки как выполненной сегодня
+  const completeHabit = async (habitId: string): Promise<void> => {
     const today = new Date().toISOString().split('T')[0];
-    
-    setHabits(prevHabits => 
-      prevHabits.map(habit => {
-        if (habit.id !== habitId) return habit;
-        
-        const isCompletedToday = habit.completedDates.includes(today);
-        
+
+    const updatedHabits = habits.map(habit => {
+      if (habit.id !== habitId) return habit;
+
+      const isCompletedToday = habit.completedDates.includes(today);
+      let newCompletedDates: string[];
+      let newStreak: number;
+
+      if (isCompletedToday) {
         // Если уже отмечена, убираем отметку
-        if (isCompletedToday) {
-          return {
-            ...habit,
-            completedDates: habit.completedDates.filter(date => date !== today),
-            streak: Math.max(0, habit.streak - 1)
-          };
-        }
-        
+        newCompletedDates = habit.completedDates.filter(date => date !== today);
+        newStreak = Math.max(0, habit.streak - 1);
+      } else {
         // Если еще не отмечена, добавляем отметку
-        return {
-          ...habit,
-          completedDates: [...habit.completedDates, today],
-          streak: habit.streak + 1
-        };
-      })
-    );
-  };
-  
-  // Функция для редактирования привычки
-  const editHabit = (habit: Habit): void => {
-    setHabits(prevHabits => 
-      prevHabits.map(h => h.id === habit.id ? habit : h)
-    );
-  };
-  
-  // Функция обновления данных (pull-to-refresh)
-  const refreshData = async (): Promise<void> => {
-    setLoading(true);
-    
-    // Имитация задержки сети
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        setTasks(mockTasks);
-        setHabits(mockHabits);
-        setLoading(false);
-        resolve();
-      }, 1500);
+        newCompletedDates = [...habit.completedDates, today];
+        newStreak = habit.streak + 1;
+      }
+
+      return {
+        ...habit,
+        completedDates: newCompletedDates,
+        streak: newStreak
+      };
     });
+
+    await saveHabits(updatedHabits);
   };
-  
-  // Функция для генерации AI-рекомендаций по задачам
+
+  // Редактирование привычки
+  const editHabit = async (updatedHabit: Habit): Promise<void> => {
+    const updatedHabits = habits.map(habit =>
+      habit.id === updatedHabit.id ? updatedHabit : habit
+    );
+    await saveHabits(updatedHabits);
+  };
+
+  // Добавление привычки
+  const addHabit = async (habitData: Partial<Habit>): Promise<void> => {
+    const newHabit: Habit = {
+      id: Date.now().toString(),
+      title: habitData.title || '',
+      description: habitData.description,
+      frequency: habitData.frequency || 'daily',
+      completedDates: [],
+      streak: 0,
+      category: habitData.category
+    };
+
+    const updatedHabits = [newHabit, ...habits];
+    await saveHabits(updatedHabits);
+  };
+
+  // Удаление привычки
+  const deleteHabit = async (habitId: string): Promise<void> => {
+    const updatedHabits = habits.filter(habit => habit.id !== habitId);
+    await saveHabits(updatedHabits);
+  };
+
+  // Генерация AI-рекомендаций по задачам
   const generateAITasks = async (): Promise<void> => {
     setLoading(true);
-    
-    // Имитация API-запроса к AI
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        // Добавляем задачи, "сгенерированные AI"
+    try {
+      // Подготовка данных для отправки
+      const userMessage = "Проанализируй мои текущие задачи и привычки и предложи 3 новые задачи, которые помогут достичь моих целей эффективнее. Обрати внимание на существующие категории.";
+      
+      // Отправка запроса к AI
+      const response = await aiCoreService.sendMessage(userMessage);
+      
+      // Проверяем ответ на наличие действий
+      if (response.actions && response.actions.length > 0) {
+        // Фильтруем только действия по созданию задач
+        const createTaskActions = response.actions.filter(action => action.type === 'CREATE_TASK');
+        
+        if (createTaskActions.length > 0) {
+          // Преобразуем действия в задачи
+          const newTasks: Task[] = createTaskActions.map(action => ({
+            id: Date.now().toString() + Math.random().toString().substring(2, 6),
+            title: action.payload.title,
+            description: action.payload.description || '',
+            completed: false,
+            priority: action.payload.priority || 'medium',
+            dueDate: action.payload.dueDate || undefined,
+            category: action.payload.category || undefined,
+            tags: action.payload.tags || []
+          }));
+          
+          // Добавляем новые задачи к существующим
+          const updatedTasks = [...newTasks, ...tasks];
+          await saveTasks(updatedTasks);
+        }
+      } else {
+        // Если действия не получены, создаем задачи на основе текста ответа
+        // Это запасной вариант, если система команд не сработала
         const aiGeneratedTasks: Task[] = [
           {
-            id: Date.now().toString(),
-            title: '[AI] Провести тестирование интерфейса',
-            description: 'Проверить удобство и интуитивность нового интерфейса',
+            id: Date.now().toString() + '1',
+            title: '[AI] Проанализировать продуктивность за неделю',
+            description: 'Оценить эффективность работы и выявить области для улучшения',
+            completed: false,
+            priority: 'medium',
+            category: 'Саморазвитие'
+          },
+          {
+            id: Date.now().toString() + '2',
+            title: '[AI] Уделить 30 минут на изучение новой технологии',
+            description: 'Расширение профессиональных навыков',
             completed: false,
             priority: 'high',
             category: 'Работа'
           },
           {
-            id: (Date.now() + 1).toString(),
-            title: '[AI] Составить план презентации для заказчика',
-            description: 'Подготовить ключевые пункты для демонстрации MVP',
+            id: Date.now().toString() + '3',
+            title: '[AI] Запланировать день восстановления',
+            description: 'Отдых и восстановление физических и умственных ресурсов',
             completed: false,
-            priority: 'medium',
-            category: 'Работа'
+            priority: 'low',
+            category: 'Здоровье'
           }
         ];
         
-        setTasks(prevTasks => [...aiGeneratedTasks, ...prevTasks]);
-        setLoading(false);
-        resolve();
-      }, 2000);
-    });
+        const updatedTasks = [...aiGeneratedTasks, ...tasks];
+        await saveTasks(updatedTasks);
+      }
+    } catch (error) {
+      console.error('Ошибка генерации AI-задач:', error);
+    } finally {
+      setLoading(false);
+    }
   };
-  
+
   return {
     tasks,
     habits,
@@ -256,6 +311,8 @@ export function useOperationsData() {
     addTask,
     completeHabit,
     editHabit,
+    addHabit,
+    deleteHabit,
     refreshData,
     generateAITasks
   };
